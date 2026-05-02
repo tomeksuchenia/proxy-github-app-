@@ -28,12 +28,12 @@ class GithubController {
     }
 
     @ExceptionHandler(ResponseStatusException.class)
-    ResponseEntity<Map<String, Object>> handleUserNotFound(ResponseStatusException ex) {
+    ResponseEntity<ErrorResponse> handleUserNotFound(ResponseStatusException ex) {
         return ResponseEntity
-                .status(HttpStatus.NOT_FOUND.value())
-                .body(Map.of(
-                        "status", HttpStatus.NOT_FOUND.value(),
-                        "message", ex.getReason() != null ? ex.getReason() : "Unexpected error"
+                .status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse(
+                        HttpStatus.NOT_FOUND.value(),
+                        ex.getReason() != null ? ex.getReason() : "Unexpected error"
                 ));
     }
 }

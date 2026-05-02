@@ -7,6 +7,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 @Service
 class GithubService {
@@ -21,11 +22,18 @@ class GithubService {
         var repos = Optional.ofNullable(githubClient.fetchUserRepos(username))
                 .orElse(List.of());
 
-        return repos.parallelStream()
-                .filter(Objects::nonNull)
-                .filter(r -> Boolean.FALSE.equals(r.fork()))
-                .map(repo -> fetchBranchesAndMap(username, repo))
-                .toList();
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()){
+            var tasks = repos
+                    .stream()
+                    .filter(Objects::nonNull)
+                    .filter(r -> Boolean.FALSE.equals(r.fork()))
+                    .map(repo -> executor.submit(() -> fetchBranchesAndMap(username, repo)))
+                    .toList();
+            return tasks
+                    .stream()
+                    .map(this::getFutureResult)
+                    .toList();
+        }
     }
 
     private RepoModel fetchBranchesAndMap(String username, RepoModel repo) {
@@ -35,5 +43,13 @@ class GithubService {
                 repo.owner(),
                 branches,
                 repo.fork());
+    }
+
+    private RepoModel getFutureResult(Future<RepoModel> future) {
+        try {
+            return future.get();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to fetch repo details", e);
+        }
     }
 }

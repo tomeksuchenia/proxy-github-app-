@@ -5,26 +5,23 @@ import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.client.RestTestClient;
 import tools.jackson.databind.ObjectMapper;
 
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 
-@SpringBootTest(classes = ProxyGithubApplication.class)
-@AutoConfigureMockMvc
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@AutoConfigureRestTestClient
 class GithubControllerTest {
 
     @Autowired
-    private MockMvc mockMvc;
+    private RestTestClient restTestClient;
 
     @Autowired
     private ObjectMapper mapper;
@@ -40,65 +37,76 @@ class GithubControllerTest {
     }
 
     @Test
-    void shouldReturnReposForUserWhenGithubReturnsCorrectData() throws Exception {
+    void shouldReturnReposForUserWhenGithubReturnsCorrectData() {
 
-        //GIVEN
+        // GIVEN
         String expectedRepoName = "testRepo";
         String username = "testUser";
+
         GithubClientStub.stubGithubCallSuccess(wireMock, username, false);
 
-        //WHEN THEN
-        mockMvc.perform(get("/api/v1/github/users/" + username + "/repos"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].name").value(expectedRepoName))
-                .andExpect(jsonPath("$[0].owner").value(username))
-                .andExpect(jsonPath("$[0].branches").isArray())
-                .andExpect(jsonPath("$[0].branches[0].name").value("main"))
-                .andExpect(jsonPath("$[0].branches[0].sha").value("abc123sha"))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        // WHEN + THEN
+        restTestClient.get()
+                .uri("/api/v1/github/users/{username}/repos", username)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$[0].name").isEqualTo(expectedRepoName)
+                .jsonPath("$[0].owner").isEqualTo(username)
+                .jsonPath("$[0].branches").isArray()
+                .jsonPath("$[0].branches[0].name").isEqualTo("main")
+                .jsonPath("$[0].branches[0].sha").isEqualTo("abc123sha");
     }
 
     @Test
-    void shouldReturnEmptyListWhenUserHasReposButItsFork() throws Exception {
+    void shouldReturnEmptyListWhenUserHasReposButItsFork() {
 
-        //GIVEN
+        // GIVEN
         String username = "testUser";
         GithubClientStub.stubGithubCallSuccess(wireMock, username, true);
 
-        // WHEN THEN
-        mockMvc.perform(get("/api/v1/github/users/" + username + "/repos"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$.length()").value(0));
+        // WHEN + THEN
+        restTestClient.get()
+                .uri("/api/v1/github/users/{username}/repos", username)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$").isArray()
+                .jsonPath("$.length()").isEqualTo(0);
     }
 
     @Test
-    void shouldReturnEmptyListWhenGithubUserExistsButHasNoRepos() throws Exception {
+    void shouldReturnEmptyListWhenGithubUserExistsButHasNoRepos() {
 
-        //GIVEN
+        // GIVEN
         String username = "emptyUser";
         GithubClientStub.stubGithubCallSuccessUserHasNoRepos(wireMock, username);
 
-        // WHEN THEN
-        mockMvc.perform(get("/api/v1/github/users/" + username + "/repos"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$.length()").value(0));
+        // WHEN + THEN
+        restTestClient.get()
+                .uri("/api/v1/github/users/{username}/repos", username)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$").isArray()
+                .jsonPath("$.length()").isEqualTo(0);
     }
 
     @Test
-    void shouldReturn404WhenUserNotFoundOnGithub() throws Exception {
+    void shouldReturn404WhenUserNotFoundOnGithub() {
+
         // GIVEN
         String username = "nonExistentUser";
         GithubClientStub.stubGithubCallUserNotFound(wireMock, username);
 
-        // WHEN THEN
-        mockMvc.perform(get("/api/v1/github/users/" + username + "/repos"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.status").value(HttpStatus.NOT_FOUND.value()))
-                .andExpect(jsonPath("$.message").exists())
-                .andExpect(jsonPath("$.message").value("User not found"));
+        // WHEN + THEN
+        restTestClient.get()
+                .uri("/api/v1/github/users/{username}/repos", username)
+                .exchange()
+                .expectStatus().isNotFound()
+                .expectBody()
+                .jsonPath("$.status").isEqualTo(HttpStatus.NOT_FOUND.value())
+                .jsonPath("$.message").exists()
+                .jsonPath("$.message").isEqualTo("User not found");
     }
 }
